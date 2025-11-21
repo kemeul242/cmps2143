@@ -1,0 +1,169 @@
+#include <fstream>
+#include <iostream>
+#include <random>
+#include <string>
+#include <vector>
+#include <SDLls /opt/homebrew/include/SDL22/SDL.h>
+
+#include "json.hpp"
+using json = nlohmann::json;
+
+struct Cell {
+    int x;
+    int y;
+};
+
+struct Shape {
+    std::string name;
+    int width;
+    int height;
+    std::vector<Cell> cells;
+};
+
+int main(int argc, char* argv[]) {
+
+    // -----------------------------
+    // CHOOSE PATTERN
+    // -----------------------------
+    std::string selectedShape = "glider";
+
+    if (argc > 1) {
+        selectedShape = argv[1];
+        std::cout << "Loading pattern: " << selectedShape << "\n";
+    }
+
+    // -----------------------------
+    // LOAD JSON DATA
+    // -----------------------------
+    std::ifstream f("patterns.json");
+    if (!f.is_open()) {
+        std::cerr << "Error: Could not open patterns.json\n";
+        return 1;
+    }
+
+    json data = json::parse(f);
+
+    if (!data.contains("shapes") || !data["shapes"].contains(selectedShape)) {
+        std::cerr << "Error: Shape not found: " << selectedShape << "\n";
+        return 1;
+    }
+
+    auto shapeJson = data["shapes"][selectedShape];
+
+    Shape shape;
+    shape.name = selectedShape;
+    shape.width = shapeJson["size"]["w"];
+    shape.height = shapeJson["size"]["h"];
+    for (auto& c : shapeJson["cells"])
+        shape.cells.push_back({c["x"], c["y"]});
+
+    // -----------------------------
+    // SDL CONFIG
+    // -----------------------------
+    const int cellSize = 20;
+    const int windowWidth = 600;
+    const int windowHeight = 600;
+
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        std::cerr << "SDL Init Error: " << SDL_GetError() << "\n";
+        return 1;
+    }
+
+    SDL_Window* window = SDL_CreateWindow(
+        "SDL2 Shape Renderer",
+        SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
+        windowWidth,
+        windowHeight,
+        SDL_WINDOW_SHOWN
+    );
+
+    if (!window) {
+        std::cerr << "Window Error: " << SDL_GetError() << "\n";
+        SDL_Quit();
+        return 1;
+    }
+
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (!renderer) {
+        std::cerr << "Renderer Error: " << SDL_GetError() << "\n";
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    // -----------------------------
+    // RANDOM COLOR FOR PATTERN
+    // -----------------------------
+    std::random_device rd;
+    std::mt19937 rng(rd());
+    std::uniform_int_distribution<int> dist(80, 255);
+
+    int colorR = dist(rng);
+    int colorG = dist(rng);
+    int colorB = dist(rng);
+
+    // -----------------------------
+    // CENTERING CALCULATION
+    // -----------------------------
+    int min_x = 99999, max_x = -99999;
+    int min_y = 99999, max_y = -99999;
+
+    for (auto& c : shape.cells) {
+        min_x = std::min(min_x, c.x);
+        max_x = std::max(max_x, c.x);
+        min_y = std::min(min_y, c.y);
+        max_y = std::max(max_y, c.y);
+    }
+
+    int patternPixelWidth  = (max_x - min_x + 1) * cellSize;
+    int patternPixelHeight = (max_y - min_y + 1) * cellSize;
+
+    int offsetX = (windowWidth  - patternPixelWidth) / 2;
+    int offsetY = (windowHeight - patternPixelHeight) / 2;
+
+    // -----------------------------
+    // MAIN LOOP
+    // -----------------------------
+    bool running = true;
+    SDL_Event event;
+
+    while (running) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT)
+                running = false;
+
+            if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
+                running = false;
+        }
+
+        // CLEAR
+        SDL_SetRenderDrawColor(renderer, 25, 25, 30, 255);
+        SDL_RenderClear(renderer);
+
+        // DRAW SHAPE
+        SDL_SetRenderDrawColor(renderer, colorR, colorG, colorB, 255);
+
+        for (auto& c : shape.cells) {
+            SDL_Rect rect;
+
+            int gridX = c.x - min_x;
+            int gridY = c.y - min_y;
+
+            rect.x = offsetX + gridX * cellSize;
+            rect.y = offsetY + gridY * cellSize;
+            rect.w = cellSize;
+            rect.h = cellSize;
+
+            SDL_RenderFillRect(renderer, &rect);
+        }
+
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);  // ~60 FPS
+    }
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 0;
+}
