@@ -18,9 +18,7 @@ struct Shape {
     std::vector<Cell> cells;
 };
 
-// ------------------------------------------------------------
 // Load a shape from JSON
-// ------------------------------------------------------------
 Shape load_shape(const json& jshape) {
     Shape s;
     s.width = jshape["size"]["w"];
@@ -32,20 +30,14 @@ Shape load_shape(const json& jshape) {
     return s;
 }
 
-// ------------------------------------------------------------
 // Main Program
-// ------------------------------------------------------------
 int main(int argc, char* argv[]) {
-    // ----------------------------------------------
     // Choose pattern (optional: command line)
-    // ----------------------------------------------
     std::string choice = "glider";
     if (argc > 1)
         choice = argv[1];
 
-    // ----------------------------------------------
     // Load JSON file
-    // ----------------------------------------------
     std::ifstream file("patterns.json");
     if (!file.is_open()) {
         std::cerr << "ERROR: Could not open patterns.json\n";
@@ -62,9 +54,7 @@ int main(int argc, char* argv[]) {
 
     Shape shape = load_shape(data["shapes"][choice]);
 
-    // ----------------------------------------------
     // SDL Initialization
-    // ----------------------------------------------
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         std::cerr << "SDL Init Error: " << SDL_GetError() << "\n";
         return 1;
@@ -100,9 +90,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // ----------------------------------------------
     // Random Color for shape
-    // ----------------------------------------------
     std::random_device rd;
     std::mt19937       gen(rd());
     std::uniform_int_distribution<int> dist(50, 255);
@@ -111,18 +99,14 @@ int main(int argc, char* argv[]) {
     int g = dist(gen);
     int b = dist(gen);
 
-    // ----------------------------------------------
     // Compute centered offset
-    // ----------------------------------------------
     int patternPixelW = shape.width * cellSize;
     int patternPixelH = shape.height * cellSize;
 
     int offsetX = (windowWidth  - patternPixelW) / 2;
     int offsetY = (windowHeight - patternPixelH) / 2;
 
-    // ----------------------------------------------
     // Main Loop
-    // ----------------------------------------------
     bool running = true;
     SDL_Event event;
 
