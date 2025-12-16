@@ -1,0 +1,43 @@
+#pragma once
+#include <SDL2/SDL.h>
+#include <vector>
+
+class Screen {
+public:
+    virtual ~Screen() = default;
+    virtual void render(const std::vector<std::vector<int>>& grid) = 0;
+    virtual void pause(unsigned ms) = 0;
+};
+
+class SdlScreen : public Screen {
+public:
+    SdlScreen(int windowW, int windowH, int cellSize, bool drawGrid=true);
+    ~SdlScreen();
+
+    // Render the current grid (grid[r][c] == 1 means alive)
+    void render(const std::vector<std::vector<int>>& grid) override;
+
+    // Sleep / cap frame rate
+    void pause(unsigned ms) override;
+
+    // Convert pixel coords -> grid coords
+    bool pixelToCell(int px, int py, int &outRow, int &outCol) const;
+
+    // Accessors
+    SDL_Window* window() const { return m_window; }
+    SDL_Renderer* renderer() const { return m_renderer; }
+    int cellSize() const { return m_cellSize; }
+    int windowW() const { return m_windowW; }
+    int windowH() const { return m_windowH; }
+
+    // Toggle drawing of grid lines
+    void setDrawGrid(bool b) { m_drawGrid = b; }
+
+private:
+    SDL_Window* m_window = nullptr;
+    SDL_Renderer* m_renderer = nullptr;
+    int m_windowW;
+    int m_windowH;
+    int m_cellSize;
+    bool m_drawGrid;
+};
