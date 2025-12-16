@@ -1,0 +1,16 @@
+CXX = g++
+CXXFLAGS = -std=c++17 -Wall -Iincludes `sdl2-config --cflags`
+LDFLAGS = `sdl2-config --libs`
+SRC = src/SDL_GOL_main.cpp src/SdlScreen.cpp src/ConwayLife.cpp
+OBJ = $(SRC:.cpp=.o)
+
+all: SDL_GOL_main
+
+SDL_GOL_main: $(OBJ)
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+clean:
+	rm -f $(OBJ) SDL_GOL_main
