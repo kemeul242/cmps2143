@@ -1,0 +1,81 @@
+#include "SdlScreen.hpp"
+#include <stdexcept>
+#include <chrono>
+#include <thread>
+
+SdlScreen::SdlScreen(int windowW, int windowH, int cellSize, bool drawGrid)
+    : m_windowW(windowW), m_windowH(windowH), m_cellSize(cellSize), m_drawGrid(drawGrid)
+{
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        throw std::runtime_error(std::string("SDL_Init Error: ") + SDL_GetError());
+    }
+    m_window = SDL_CreateWindow("Conway's Game of Life - SDL2", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                m_windowW, m_windowH, SDL_WINDOW_SHOWN);
+    if (!m_window) {
+        SDL_Quit();
+        throw std::runtime_error(std::string("SDL_CreateWindow Error: ") + SDL_GetError());
+    }
+    m_renderer = SDL_CreateRenderer(m_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!m_renderer) {
+        SDL_DestroyWindow(m_window);
+        SDL_Quit();
+        throw std::runtime_error(std::string("SDL_CreateRenderer Error: ") + SDL_GetError());
+    }
+    // Optional: set logical size or scale here if desired
+}
+
+SdlScreen::~SdlScreen() {
+    if (m_renderer) SDL_DestroyRenderer(m_renderer);
+    if (m_window) SDL_DestroyWindow(m_window);
+    SDL_Quit();
+}
+
+void SdlScreen::render(const std::vector<std::vector<int>>& grid) {
+    // background (dead cell color)
+    SDL_SetRenderDrawColor(m_renderer, 40, 40, 40, 255); // dark gray
+    SDL_RenderClear(m_renderer);
+
+    int rows = (int)grid.size();
+    int cols = rows ? (int)grid[0].size() : 0;
+
+    // Draw cells
+    SDL_Rect cellRect;
+    cellRect.w = m_cellSize;
+    cellRect.h = m_cellSize;
+
+    for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            // map grid -> pixel
+            cellRect.x = c * m_cellSize;
+            cellRect.y = r * m_cellSize;
+
+            if (grid[r][c]) {
+                // alive color
+                SDL_SetRenderDrawColor(m_renderer, 230, 230, 230, 255); // white-ish
+                SDL_RenderFillRect(m_renderer, &cellRect);
+            } else {
+                // dead cell: already background; optionally draw filled rect slightly darker
+                // (we skip to save draws)
+            }
+
+            // optional border lines
+            if (m_drawGrid) {
+                SDL_SetRenderDrawColor(m_renderer, 24, 24, 24, 255);
+                SDL_RenderDrawRect(m_renderer, &cellRect);
+            }
+        }
+    }
+    SDL_RenderPresent(m_renderer);
+}
+
+void SdlScreen::pause(unsigned ms) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
+
+bool SdlScreen::pixelToCell(int px, int py, int &outRow, int &outCol) const {
+    if (px < 0 || py < 0) return false;
+    outCol = px / m_cellSize;
+    outRow = py / m_cellSize;
+    // optional bounds check can be done by caller since they know grid size
+    return true;
+}
