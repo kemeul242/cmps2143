@@ -1,0 +1,185 @@
+// src/SDL_GOL_main.cpp
+#include <SDL2/SDL.h>
+#include <iostream>
+#include <fstream>
+#include <map>
+#include <vector>
+#include <string>
+#include <utility>
+#include "SdlScreen.hpp"
+#include "ArgsToJson.hpp"
+#include "json.hpp"
+
+// ADAPT: include your ConwayLife / CellularAutomaton header(s)
+#include "ConwayLife.hpp" // <-- change to actual path
+
+using json = nlohmann::json;
+
+// Simple pattern representation: vector of (dx, dy)
+using Pattern = std::vector<std::pair<int,int>>;
+
+static std::map<std::string, Pattern> loadPatterns(const std::string& filename) {
+    std::map<std::string, Pattern> res;
+    std::ifstream ifs(filename);
+    if (!ifs.is_open()) {
+        std::cerr << "Warning: could not open patterns file: " << filename << "\n";
+        return res;
+    }
+    json j;
+    ifs >> j;
+    if (!j.contains("shapes")) return res;
+    for (auto it = j["shapes"].begin(); it != j["shapes"].end(); ++it) {
+        std::string name = it.key();
+        const json& shape = it.value();
+        if (!shape.contains("cells")) continue;
+        Pattern p;
+        for (const auto& cell : shape["cells"]) {
+            int x = cell.value("x", 0);
+            int y = cell.value("y", 0);
+            p.emplace_back(x, y);
+        }
+        res[name] = p;
+    }
+    return res;
+}
+
+int main(int argc, char** argv) {
+    // parse args into JSON (you have ArgsToJson)
+    json params = ArgsToJson(argc, argv);
+    int windowW = params.value("window_width", 900);
+    int windowH = params.value("window_height", 900);
+    int cellSize = params.value("cellSize", 12);
+    int frameDelayMs = params.value("frameDelayMs", 50);
+    bool drawGrid = params.value("drawGrid", true);
+    std::string shapesFile = params.value("shapesFile", std::string("assets/shapes.json"));
+
+    // Compute grid dimensions (rows, cols)
+    int cols = windowW / cellSize;
+    int rows = windowH / cellSize;
+
+    // Create SdlScreen
+    SdlScreen screen(windowW, windowH, cellSize, drawGrid);
+
+    // ADAPT: create your ConwayLife object with rows, cols
+    // Example assumed constructor: ConwayLife(rows, cols)
+    ConwayLife gol(rows, cols);
+
+    // If your class uses different constructor, change here.
+    // ADAPT end.
+
+    // Load patterns
+    auto patterns = loadPatterns(shapesFile);
+    if (patterns.empty()) {
+        std::cerr << "No patterns loaded from " << shapesFile << ".\n";
+    } else {
+        std::cerr << "Loaded " << patterns.size() << " shapes from " << shapesFile << ".\n";
+    }
+
+    bool running = true;
+    bool paused = true;
+    Uint32 lastStep = SDL_GetTicks();
+    int mouseRow = rows/2, mouseCol = cols/2; // track last mouse cell
+    std::string patternKeys[] = {"glider","blinker","lwss"}; // map keys to shapes if you like
+
+    // Helper lambda to safe-set cell in gol (ADAPT)
+    auto setCellIfInBounds = [&](int r, int c, int val) {
+        if (r >= 0 && r < gol.rows() && c >= 0 && c < gol.cols()) {
+            gol.setCell(r, c, val); // ADAPT: ensure this method exists or call appropriate API
+        }
+    };
+
+    // Put pattern centered at (r,c)
+    auto placePattern = [&](const Pattern &p, int centerR, int centerC) {
+        for (auto [dx,dy] : p) {
+            int r = centerR + dy; // note: JSON used x,y; ensure orientation matches your grid
+            int c = centerC + dx;
+            setCellIfInBounds(r, c, 1);
+        }
+    };
+
+    // main loop
+    while (running) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {
+            if (ev.type == SDL_QUIT) {
+                running = false;
+            } else if (ev.type == SDL_KEYDOWN) {
+                SDL_Keycode k = ev.key.keysym.sym;
+                if (k == SDLK_SPACE) {
+                    paused = !paused;
+                } else if (k == SDLK_n || k == SDLK_N) {
+                    if (paused) gol.step();
+                } else if (k == SDLK_r || k == SDLK_R) {
+                    gol.randomize(); // ADAPT: randomize method
+                } else if (k == SDLK_c || k == SDLK_C) {
+                    gol.clear(); // ADAPT: clear / reset method
+                } else if (k == SDLK_q || k == SDLK_ESCAPE) {
+                    running = false;
+                } else if (k >= SDLK_1 && k <= SDLK_9) {
+                    // map number keys to pattern list (if any)
+                    int idx = (k - SDLK_1);
+                    if (idx < (int)patternKeys->size()) {
+                        auto it = patterns.find(patternKeys[idx]);
+                        if (it != patterns.end()) {
+                            placePattern(it->second, mouseRow, mouseCol);
+                        }
+                    }
+                } else {
+                    // pattern by letter: e.g., 'g' -> glider
+                    if (k == SDLK_g || k == SDLK_G) {
+                        auto it = patterns.find("glider");
+                        if (it != patterns.end()) placePattern(it->second, mouseRow, mouseCol);
+                    } else if (k == SDLK_b || k == SDLK_B) {
+                        auto it = patterns.find("blinker");
+                        if (it != patterns.end()) placePattern(it->second, mouseRow, mouseCol);
+                    } // add more letter-to-pattern mappings here if you like
+                }
+            } else if (ev.type == SDL_MOUSEMOTION) {
+                int mx = ev.motion.x;
+                int my = ev.motion.y;
+                int r, c;
+                screen.pixelToCell(mx, my, r, c);
+                mouseRow = r; mouseCol = c;
+            } else if (ev.type == SDL_MOUSEBUTTONDOWN) {
+                if (ev.button.button == SDL_BUTTON_LEFT) {
+                    int mx = ev.button.x;
+                    int my = ev.button.y;
+                    int r, c;
+                    screen.pixelToCell(mx, my, r, c);
+                    if (r >= 0 && c >= 0 && r < gol.rows() && c < gol.cols()) {
+                        gol.toggleCell(r, c); // ADAPT: toggle cell API or use get/set
+                    }
+                }
+                else if (ev.button.button == SDL_BUTTON_RIGHT) {
+                    // place a default pattern at mouse
+                    auto it = patterns.find("glider");
+                    if (it != patterns.end()) placePattern(it->second, mouseRow, mouseCol);
+                }
+            }
+        } // end event loop
+
+        Uint32 now = SDL_GetTicks();
+        if (!paused && (now - lastStep >= (Uint32)frameDelayMs)) {
+            gol.step(); // advance simulation
+            lastStep = now;
+        }
+
+        // render: obtain grid from gol in the expected shape vector<vector<int>>
+        // ADAPT: use your gol.getGrid() method or build it manually.
+        std::vector<std::vector<int>> grid;
+        {
+            // ADAPT: the snippet below assumes you have gol.rows(), gol.cols(), gol.getCell(r,c)
+            grid.assign(gol.rows(), std::vector<int>(gol.cols(), 0));
+            for (int r = 0; r < gol.rows(); ++r) {
+                for (int c = 0; c < gol.cols(); ++c) {
+                    grid[r][c] = gol.getCell(r,c) ? 1 : 0;
+                }
+            }
+        }
+
+        screen.render(grid);
+        screen.pause(1); // tiny sleep to avoid pegging CPU
+    } // end main loop
+
+    return 0;
+}
